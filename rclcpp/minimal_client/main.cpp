@@ -15,36 +15,141 @@
 #include <chrono>
 #include <cinttypes>
 #include <memory>
+#include <future>
 #include "example_interfaces/srv/add_two_ints.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-using AddTwoInts = example_interfaces::srv::AddTwoInts;
+using namespace std::chrono_literals;
+
+class MinimalClient : public rclcpp::Node
+{
+public:
+  using AddTwoInts = example_interfaces::srv::AddTwoInts;
+  using ServiceResponseFuture = rclcpp::Client<AddTwoInts>::SharedFuture;
+
+  explicit MinimalClient(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("MinimalClient", options)
+  {
+    client_ = create_client<AddTwoInts>("add_two_ints");
+    timer_ = create_wall_timer(10s, std::bind(&MinimalClient::on_timer, this));
+  }
+
+private:
+  rclcpp::Client<AddTwoInts>::SharedPtr client_;
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  void on_timer()
+  {
+    if (!client_->wait_for_service(1s)) {
+      if (!rclcpp::ok()) {
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "Interrupted while waiting for the service. Exiting.");
+        return;
+      }
+      RCLCPP_INFO(this->get_logger(), "Service not available after waiting");
+      return;
+    }
+
+    // Choose one of the following ways to send the service and obtain the response
+    // doFirstAlternative();
+    // doSecondAlternative();
+    doThirdAlternative();
+
+    RCLCPP_INFO(this->get_logger(), "Exiting timer callback");
+  }
+
+  void doFirstAlternative()
+  {
+    // Option 1: Pass a callback to async
+    auto request = std::make_shared<AddTwoInts::Request>();
+    request->a = 2;
+    request->b = 3;
+
+    auto response_received_callback = [this](ServiceResponseFuture future) {
+        RCLCPP_INFO(this->get_logger(), "Got result: [%" PRId64 "]", future.get()->sum);
+    };
+
+    auto future = client_->async_send_request(request, response_received_callback);
+  }
+
+  void doSecondAlternative()
+  {
+    // Option 2: Start a separate thread to wait for the future
+    auto request = std::make_shared<AddTwoInts::Request>();
+    request->a = 2;
+    request->b = 3;
+
+    auto future = client_->async_send_request(request);
+    RCLCPP_INFO(this->get_logger(), "Sent request");
+
+    std::thread wait_for_future_thread([this, future]() {
+      RCLCPP_INFO(this->get_logger(), "Waiting...");
+      std::future_status status;
+      do {
+          status = future.wait_for(1s);
+          if (status == std::future_status::deferred) {
+              RCLCPP_INFO(this->get_logger(), "Deferred");
+          } else if (status == std::future_status::timeout) {
+              RCLCPP_INFO(this->get_logger(), "Timeout");
+          } else if (status == std::future_status::ready) {
+              RCLCPP_INFO(this->get_logger(), "Ready");
+          }
+      } while (status != std::future_status::ready && rclcpp::ok());
+      RCLCPP_INFO(this->get_logger(), "Exiting while loop");
+
+      if (status == std::future_status::ready) {
+        RCLCPP_INFO(this->get_logger(), "Got result: [%" PRId64 "]", future.get()->sum);
+      }
+
+    });
+    wait_for_future_thread.detach();
+  }
+
+  void doThirdAlternative()
+  {
+    // Option 3: Run the node on a multithreaded executor
+    //           and assume another thread will get process the response and update the future
+    auto request = std::make_shared<AddTwoInts::Request>();
+    request->a = 2;
+    request->b = 3;
+
+    auto future = client_->async_send_request(request);
+    RCLCPP_INFO(this->get_logger(), "Sent request");
+
+    RCLCPP_INFO(this->get_logger(), "Waiting...");
+    std::future_status status;
+    do {
+        // Wait for the other thread on the executor to catch the client executable
+        // and update the future
+        status = future.wait_for(1s);
+        if (status == std::future_status::deferred) {
+            RCLCPP_INFO(this->get_logger(), "Deferred");
+        } else if (status == std::future_status::timeout) {
+            RCLCPP_INFO(this->get_logger(), "Timeout");
+        } else if (status == std::future_status::ready) {
+            RCLCPP_INFO(this->get_logger(), "Ready");
+        }
+    } while (status != std::future_status::ready && rclcpp::ok());
+    RCLCPP_INFO(this->get_logger(), "Exiting while loop");
+
+    if (status == std::future_status::ready) {
+      RCLCPP_INFO(this->get_logger(), "Got result: [%" PRId64 "]", future.get()->sum);
+    }
+  }
+
+};  // class MinimalClient
 
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  auto node = rclcpp::Node::make_shared("minimal_client");
-  auto client = node->create_client<AddTwoInts>("add_two_ints");
-  while (!client->wait_for_service(std::chrono::seconds(1))) {
-    if (!rclcpp::ok()) {
-      RCLCPP_ERROR(node->get_logger(), "client interrupted while waiting for service to appear.");
-      return 1;
-    }
-    RCLCPP_INFO(node->get_logger(), "waiting for service to appear...");
-  }
-  auto request = std::make_shared<AddTwoInts::Request>();
-  request->a = 41;
-  request->b = 1;
-  auto result_future = client->async_send_request(request);
-  if (rclcpp::spin_until_future_complete(node, result_future) !=
-    rclcpp::executor::FutureReturnCode::SUCCESS)
-  {
-    RCLCPP_ERROR(node->get_logger(), "service call failed :(");
-    return 1;
-  }
-  auto result = result_future.get();
-  RCLCPP_INFO(node->get_logger(), "result of %" PRId64 " + %" PRId64 " = %" PRId64,
-    request->a, request->b, result->sum);
+  auto client = std::make_shared<MinimalClient>();
+
+  // rclcpp::executors::MultiThreadedExecutor exec(rclcpp::executor::ExecutorArgs(), 2);
+  rclcpp::executors::SingleThreadedExecutor exec;
+  exec.add_node(client->get_node_base_interface());
+  exec.spin();
+
   rclcpp::shutdown();
   return 0;
 }
