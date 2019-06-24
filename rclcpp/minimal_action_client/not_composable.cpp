@@ -53,6 +53,26 @@ int main(int argc, char ** argv)
     return 1;
   }
 
+ // Populate a second goal
+  auto goal_msg_2 = Fibonacci::Goal();
+  goal_msg_2.order = 10;
+
+  RCLCPP_INFO(node->get_logger(), "Sending goal");
+  // Ask server to achieve some goal and wait until it's accepted
+  auto goal_handle_future_2 = action_client->async_send_goal(goal_msg_2);
+  if (rclcpp::spin_until_future_complete(node, goal_handle_future_2) !=
+    rclcpp::executor::FutureReturnCode::SUCCESS)
+  {
+    RCLCPP_ERROR(node->get_logger(), "send goal call failed :(");
+    return 1;
+  }
+
+  rclcpp_action::ClientGoalHandle<Fibonacci>::SharedPtr goal_handle_2 = goal_handle_future_2.get();
+  if (!goal_handle_2) {
+    RCLCPP_ERROR(node->get_logger(), "Goal was rejected by server");
+    return 1;
+  }
+
   // Wait for the server to be done with the goal
   auto result_future = action_client->async_get_result(goal_handle);
 

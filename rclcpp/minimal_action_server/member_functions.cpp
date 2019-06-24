@@ -14,6 +14,7 @@
 
 #include <inttypes.h>
 #include <memory>
+#include <iostream>
 #include "example_interfaces/action/fibonacci.hpp"
 #include "rclcpp/rclcpp.hpp"
 // TODO(jacobperron): Remove this once it is included as part of 'rclcpp.hpp'
@@ -68,7 +69,7 @@ private:
   void execute(const std::shared_ptr<GoalHandleFibonacci> goal_handle)
   {
     RCLCPP_INFO(this->get_logger(), "Executing goal");
-    rclcpp::Rate loop_rate(1);
+    rclcpp::Rate loop_rate(2);
     const auto goal = goal_handle->get_goal();
     auto feedback = std::make_shared<Fibonacci::Feedback>();
     auto & sequence = feedback->sequence;
@@ -86,9 +87,12 @@ private:
       }
       // Update sequence
       sequence.push_back(sequence[i] + sequence[i - 1]);
+      auto goalUUID = goal_handle->get_goal_id();  // using GoalUUID = std::array<uint8_t, UUID_SIZE>;
+
+      RCLCPP_INFO(this->get_logger(), "Publish feedback for goal: %" PRId8, goalUUID);
+
       // Publish feedback
       goal_handle->publish_feedback(feedback);
-      RCLCPP_INFO(this->get_logger(), "Publish Feedback");
 
       loop_rate.sleep();
     }
@@ -104,8 +108,12 @@ private:
   void handle_accepted(const std::shared_ptr<GoalHandleFibonacci> goal_handle)
   {
     using namespace std::placeholders;
+
+    RCLCPP_INFO(this->get_logger(), "Starting execution of action");
+
     // this needs to return quickly to avoid blocking the executor, so spin up a new thread
-    std::thread{std::bind(&MinimalActionServer::execute, this, _1), goal_handle}.detach();
+    // std::thread{std::bind(&MinimalActionServer::execute, this, _1), goal_handle}.detach();
+    execute(goal_handle);
   }
 };  // class MinimalActionServer
 

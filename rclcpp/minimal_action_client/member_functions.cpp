@@ -36,24 +36,16 @@ public:
       this->get_node_logging_interface(),
       this->get_node_waitables_interface(),
       "fibonacci");
-
-    this->timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(500),
-      std::bind(&MinimalActionClient::send_goal, this));
   }
 
-  bool is_goal_done() const
+    bool is_goal_done() const
   {
     return this->goal_done_;
   }
 
-  void send_goal()
+  void send_goal(int number)
   {
     using namespace std::placeholders;
-
-    this->timer_->cancel();
-
-    this->goal_done_ = false;
 
     if (!this->client_ptr_) {
       RCLCPP_ERROR(this->get_logger(), "Action client not initialized");
@@ -61,14 +53,13 @@ public:
 
     if (!this->client_ptr_->wait_for_action_server(std::chrono::seconds(10))) {
       RCLCPP_ERROR(this->get_logger(), "Action server not available after waiting");
-      this->goal_done_ = true;
       return;
     }
 
     auto goal_msg = Fibonacci::Goal();
-    goal_msg.order = 10;
+    goal_msg.order = number;
 
-    RCLCPP_INFO(this->get_logger(), "Sending goal");
+    RCLCPP_INFO(this->get_logger(), "Sending goal of order %d ", goal_msg.order);
 
     auto send_goal_options = rclcpp_action::Client<Fibonacci>::SendGoalOptions();
     send_goal_options.goal_response_callback =
@@ -82,7 +73,6 @@ public:
 
 private:
   rclcpp_action::Client<Fibonacci>::SharedPtr client_ptr_;
-  rclcpp::TimerBase::SharedPtr timer_;
   bool goal_done_;
 
   void goal_response_callback(std::shared_future<GoalHandleFibonacci::SharedPtr> future)
@@ -133,6 +123,8 @@ int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto action_client = std::make_shared<MinimalActionClient>();
+  action_client->send_goal(10);
+  action_client->send_goal(20);
 
   while (!action_client->is_goal_done()) {
     rclcpp::spin_some(action_client);
