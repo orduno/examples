@@ -30,13 +30,15 @@ public:
   explicit MinimalClient(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Node("MinimalClient", options)
   {
-    client_ = create_client<AddTwoInts>("add_two_ints");
+    callback_group_ = create_callback_group(rclcpp::callback_group::CallbackGroupType::Reentrant);
+    client_ = create_client<AddTwoInts>("add_two_ints", rmw_qos_profile_services_default, callback_group_);
     timer_ = create_wall_timer(10s, std::bind(&MinimalClient::on_timer, this));
   }
 
 private:
   rclcpp::Client<AddTwoInts>::SharedPtr client_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::callback_group::CallbackGroup::SharedPtr callback_group_;
 
   void on_timer()
   {
@@ -110,6 +112,7 @@ private:
   {
     // Option 3: Run the node on a multithreaded executor
     //           and assume another thread will get process the response and update the future
+    //           the`add_two_ints` client should be on a separate callback group.
     auto request = std::make_shared<AddTwoInts::Request>();
     request->a = 2;
     request->b = 3;
@@ -142,11 +145,15 @@ private:
 
 int main(int argc, char * argv[])
 {
+  using namespace rclcpp::executors;
+  using namespace rclcpp::executor;
+
   rclcpp::init(argc, argv);
+
   auto client = std::make_shared<MinimalClient>();
 
-  // rclcpp::executors::MultiThreadedExecutor exec(rclcpp::executor::ExecutorArgs(), 2);
-  rclcpp::executors::SingleThreadedExecutor exec;
+  bool yield_before_execute = true;
+  MultiThreadedExecutor exec(ExecutorArgs(), 2, yield_before_execute);
   exec.add_node(client->get_node_base_interface());
   exec.spin();
 
