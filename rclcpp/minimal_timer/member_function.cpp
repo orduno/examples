@@ -15,20 +15,22 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <iostream>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 
 using namespace std::chrono_literals;
 
-class SecondaryNode
+class Util
 {
 public:
-  explicit SecondaryNode(std::shared_ptr<rclcpp::Node> node, const std::string & name)
+  explicit Util(rclcpp::Node::SharedPtr node, const std::string & name)
   : node_{node}, name_{name}
   {
-    publisher_ = node_->create_publisher<std_msgs::msg::String>("secondary_node_topic", 10);
-    timer_ = node_->create_wall_timer(1s, std::bind(&SecondaryNode::timer_callback, this));
+    publisher_ = node_->create_publisher<std_msgs::msg::String>("util_topic", 10);
+
+    timer_ = node_->create_wall_timer(1s, std::bind(&Util::timer_callback, this));
   }
 
 private:
@@ -40,7 +42,7 @@ private:
   void timer_callback()
   {
     RCLCPP_INFO(node_->get_logger(),
-      "this is %s in", name_.c_str(), node_->get_fully_qualified_name());
+      "this is %s in %s", node_->get_effective_namespace().c_str(), name_.c_str());
 
     auto message = std_msgs::msg::String();
     message.data = "this is " + name_;
@@ -54,38 +56,36 @@ public:
   PrimaryNode()
   : Node("primary_node")
   {
-    auto sub_node_ = create_sub_node("secondary_node_ns");
-    auto second_node_ = std::make_unique<SecondaryNode>(sub_node_, "secondary_node");
-    // sub_node_executor_ = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
-    // sub_node_thread_ = std::make_unique<std::thread>(
-    //   [&](rclcpp::Node::SharedPtr node)
-    //   {
-    //     sub_node_executor_->add_node(node->get_node_base_interface());
-    //     sub_node_executor_->spin();
-    //     sub_node_executor_->remove_node(node->get_node_base_interface());
-    //   }, sub_node_);
+    sub_node_ = create_sub_node("util_ns");
+
+    util_ = std::make_unique<Util>(sub_node_, "sub_node");
 
     timer_ = create_wall_timer(1s, std::bind(&PrimaryNode::timer_callback, this));
+
+    sub_node_timer_ = sub_node_->create_wall_timer(
+      1s, std::bind(&PrimaryNode::sub_node_timer_callback, this));
   }
 
   ~PrimaryNode()
   {
-    RCLCPP_INFO(get_logger(), "Destroying");
-    // sub_node_executor_->cancel();
-    // sub_node_thread_->join();
+    RCLCPP_INFO(get_logger(), "PrimaryNode::Destroying");
   }
 
 private:
   rclcpp::Node::SharedPtr sub_node_;
-  std::unique_ptr<SecondaryNode> second_node_;
-  std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> sub_node_executor_;
-  std::unique_ptr<std::thread> sub_node_thread_;
+  std::unique_ptr<Util> util_;
 
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr sub_node_timer_;
 
   void timer_callback()
   {
-    RCLCPP_INFO(this->get_logger(), "this is %s", this->get_fully_qualified_name());
+    RCLCPP_INFO(this->get_logger(), "this is %s", get_effective_namespace().c_str());
+  }
+
+    void sub_node_timer_callback()
+  {
+    RCLCPP_INFO(this->get_logger(), "this is %s", sub_node_->get_effective_namespace().c_str());
   }
 
 };
@@ -93,12 +93,14 @@ private:
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  // rclcpp::spin(std::make_shared<PrimaryNode>());
+
   auto node = std::make_shared<PrimaryNode>();
-  auto executor = std::make_unique<rclcpp::executors::MultiThreadedExecutor>();
+
+  auto executor = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
   executor->add_node(node->get_node_base_interface());
   executor->spin();
   executor->remove_node(node->get_node_base_interface());
+
   rclcpp::shutdown();
   return 0;
 }
