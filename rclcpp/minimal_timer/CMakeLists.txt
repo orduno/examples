@@ -12,17 +12,20 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
 
 add_executable(timer_lambda lambda.cpp)
 ament_target_dependencies(timer_lambda rclcpp)
 
 add_executable(timer_member_function member_function.cpp)
-ament_target_dependencies(timer_member_function rclcpp)
+ament_target_dependencies(timer_member_function rclcpp std_msgs)
 
 install(TARGETS
   timer_lambda
   timer_member_function
   DESTINATION lib/${PROJECT_NAME}
 )
+
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 ament_package()
