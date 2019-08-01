@@ -20,12 +20,3 @@ def generate_launch_description():
                 output='screen')
         ])
     ])
-
-# def generate_launch_description():
-#     """Launch a talker and a listener."""
-#     return LaunchDescription([
-#         launch_ros.actions.Node(
-#             package='examples_rclcpp_minimal_timer',
-#             node_executable='timer_member_function',
-#             output='screen')
-#     ])

@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <memory>
+#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
@@ -23,10 +24,12 @@ using namespace std::chrono_literals;
 class MinimalLifecycleTimer : public rclcpp_lifecycle::LifecycleNode
 {
 public:
-  MinimalLifecycleTimer()
-  : rclcpp_lifecycle::LifecycleNode("minimal_life_cycle_timer", "lifecycle_timer_ns", rclcpp::NodeOptions())
+  explicit MinimalLifecycleTimer(const rclcpp::NodeOptions & options)
+  : rclcpp_lifecycle::LifecycleNode("minimal_life_cycle_timer", "lifecycle_timer_ns", options),
+    options_{options}
   {
-    RCLCPP_INFO(this->get_logger(), "The namespace is %s", this->get_namespace());
+    RCLCPP_INFO(this->get_logger(), "Lifecycle node namespace is %s", this->get_namespace());
+    RCLCPP_INFO(this->get_logger(), "Lifecycle arguments %s", options_.arguments().front().c_str());
 
     timer_ = create_wall_timer(
       500ms, std::bind(&MinimalLifecycleTimer::timer_callback, this));
@@ -35,18 +38,19 @@ public:
 private:
   void timer_callback()
   {
-    RCLCPP_INFO(this->get_logger(), "Hello, world!");
+    RCLCPP_INFO(this->get_logger(), "Lifecycle node timer callback");
   }
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::NodeOptions options_;
 };
 
 class MinimalTimer : public rclcpp::Node
 {
 public:
-  MinimalTimer()
+  explicit MinimalTimer()
   : Node("minimal_timer", "timer_ns")
   {
-    RCLCPP_INFO(this->get_logger(), "The namespace is %s", this->get_namespace());
+    RCLCPP_INFO(this->get_logger(), "Regular node namespace is %s", this->get_namespace());
 
     timer_ = create_wall_timer(
       500ms, std::bind(&MinimalTimer::timer_callback, this));
@@ -55,7 +59,7 @@ public:
 private:
   void timer_callback()
   {
-    RCLCPP_INFO(this->get_logger(), "Hello, world!");
+    RCLCPP_INFO(this->get_logger(), "Regular node timer callback");
   }
   rclcpp::TimerBase::SharedPtr timer_;
 };
@@ -64,8 +68,12 @@ int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
 
+  auto options = rclcpp::NodeOptions{};
+  auto arguments = std::vector<std::string>{"__ns:=/options_ns"};
+  options.arguments(arguments);
+
   auto minimal_timer = std::make_shared<MinimalTimer>();
-  auto minimal_lifecycle_timer = std::make_shared<MinimalLifecycleTimer>();
+  auto minimal_lifecycle_timer = std::make_shared<MinimalLifecycleTimer>(options);
 
   auto exec = std::make_unique<rclcpp::executors::MultiThreadedExecutor>();
   exec->add_node(minimal_timer->get_node_base_interface());
