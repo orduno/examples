@@ -16,8 +16,29 @@
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/lifecycle_node.hpp"
 
 using namespace std::chrono_literals;
+
+class MinimalLifecycleTimer : public rclcpp_lifecycle::LifecycleNode
+{
+public:
+  MinimalLifecycleTimer()
+  : rclcpp_lifecycle::LifecycleNode("minimal_life_cycle_timer", "lifecycle_timer_ns", rclcpp::NodeOptions())
+  {
+    RCLCPP_INFO(this->get_logger(), "The namespace is %s", this->get_namespace());
+
+    timer_ = create_wall_timer(
+      500ms, std::bind(&MinimalLifecycleTimer::timer_callback, this));
+  }
+
+private:
+  void timer_callback()
+  {
+    RCLCPP_INFO(this->get_logger(), "Hello, world!");
+  }
+  rclcpp::TimerBase::SharedPtr timer_;
+};
 
 class MinimalTimer : public rclcpp::Node
 {
@@ -42,7 +63,15 @@ private:
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<MinimalTimer>());
+
+  auto minimal_timer = std::make_shared<MinimalTimer>();
+  auto minimal_lifecycle_timer = std::make_shared<MinimalLifecycleTimer>();
+
+  auto exec = std::make_unique<rclcpp::executors::MultiThreadedExecutor>();
+  exec->add_node(minimal_timer->get_node_base_interface());
+  exec->add_node(minimal_lifecycle_timer->get_node_base_interface());
+  exec->spin();
+
   rclcpp::shutdown();
   return 0;
 }
