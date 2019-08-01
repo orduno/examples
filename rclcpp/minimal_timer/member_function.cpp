@@ -19,15 +19,14 @@
 
 using namespace std::chrono_literals;
 
-/* This example creates a subclass of Node and uses std::bind() to register a
- * member function as a callback from the timer. */
-
 class MinimalTimer : public rclcpp::Node
 {
 public:
   MinimalTimer()
-  : Node("minimal_timer")
+  : Node("minimal_timer", "timer_ns")
   {
+    RCLCPP_INFO(this->get_logger(), "The namespace is %s", this->get_namespace());
+
     timer_ = create_wall_timer(
       500ms, std::bind(&MinimalTimer::timer_callback, this));
   }
