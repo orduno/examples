@@ -18,6 +18,7 @@
 #include "rclcpp/rclcpp.hpp"
 // TODO(jacobperron): Remove this once it is included as part of 'rclcpp.hpp'
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "std_msgs/msg/empty.hpp"
 
 class MinimalActionServer : public rclcpp::Node
 {
@@ -28,7 +29,19 @@ public:
   explicit MinimalActionServer(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Node("minimal_action_server", options)
   {
+    auto internal_options = rclcpp::NodeOptions().arguments(
+      {"--ros-args",
+        "-r", std::string("__node:=") + get_name() + "_internal_node",
+        "--"});
+    internal_node_ = std::make_shared<rclcpp::Node>("_", internal_options);
+    action_client_to_self_ = rclcpp_action::create_client<Fibonacci>(internal_node_, "fibonacci");
+
     using namespace std::placeholders;
+
+    trigger_action_sub_ = create_subscription<std_msgs::msg::Empty>(
+      "/trigger",
+      rclcpp::SystemDefaultsQoS(),
+      std::bind(&MinimalActionServer::on_trigger_received, this, _1));
 
     this->action_server_ = rclcpp_action::create_server<Fibonacci>(
       this->get_node_base_interface(),
@@ -39,10 +52,32 @@ public:
       std::bind(&MinimalActionServer::handle_goal, this, _1, _2),
       std::bind(&MinimalActionServer::handle_cancel, this, _1),
       std::bind(&MinimalActionServer::handle_accepted, this, _1));
+
+    // Launch a thread to spin the internal node
+    thread_ = std::make_unique<std::thread>(
+      [&](rclcpp::Node::SharedPtr node)
+      {
+        executor_.add_node(node->get_node_base_interface());
+        executor_.spin();
+        executor_.remove_node(node->get_node_base_interface());
+      }, internal_node_);
+  }
+
+  ~MinimalActionServer()
+  {
+    RCLCPP_INFO(get_logger(), "Destroying");
+    executor_.cancel();
+    thread_->join();
   }
 
 private:
   rclcpp_action::Server<Fibonacci>::SharedPtr action_server_;
+
+  rclcpp::Node::SharedPtr internal_node_;
+  rclcpp::executors::SingleThreadedExecutor executor_;
+  std::unique_ptr<std::thread> thread_;
+  rclcpp_action::Client<Fibonacci>::SharedPtr action_client_to_self_;
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr trigger_action_sub_;
 
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID & uuid,
@@ -106,6 +141,14 @@ private:
     using namespace std::placeholders;
     // this needs to return quickly to avoid blocking the executor, so spin up a new thread
     std::thread{std::bind(&MinimalActionServer::execute, this, _1), goal_handle}.detach();
+  }
+
+  void on_trigger_received(const std_msgs::msg::Empty::SharedPtr /*msg*/)
+  {
+    RCLCPP_INFO(this->get_logger(), "Sending goal request to self");
+    auto goal = Fibonacci::Goal();
+    goal.order = 10;
+    action_client_to_self_->async_send_goal(goal);
   }
 };  // class MinimalActionServer
 

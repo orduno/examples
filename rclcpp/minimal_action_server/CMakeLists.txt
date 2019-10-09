@@ -14,18 +14,21 @@ find_package(ament_cmake REQUIRED)
 find_package(example_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(std_msgs REQUIRED)
 
 add_executable(action_server_member_functions member_functions.cpp)
 ament_target_dependencies(action_server_member_functions
   "rclcpp"
   "rclcpp_action"
-  "example_interfaces")
+  "example_interfaces"
+  "std_msgs")
 
 add_executable(action_server_not_composable not_composable.cpp)
 ament_target_dependencies(action_server_not_composable
   "rclcpp"
   "rclcpp_action"
-  "example_interfaces")
+  "example_interfaces"
+  "std_msgs")
 
 install(TARGETS
   action_server_not_composable
